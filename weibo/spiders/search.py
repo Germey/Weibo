@@ -2,6 +2,7 @@
 import re
 from scrapy import Spider, Request, FormRequest
 from weibo.items import WeiboItem
+import tushare as ts
 
 
 class SearchSpider(Spider):
@@ -9,9 +10,13 @@ class SearchSpider(Spider):
     allowed_domains = ["weibo.cn"]
     search_url = 'http://weibo.cn/search/mblog'
     max_page = 200
-    keywords = ['000001']
 
     def start_requests(self):
+        result = ts.get_sz50s()
+        # result = ts.get_zz500s()
+        # result = ts.get_hs300s()
+        self.keywords = result['code'].tolist()
+
         for keyword in self.keywords:
             url = '{url}?keyword={keyword}'.format(url=self.search_url, keyword=keyword)
             for page in range(self.max_page + 1):
@@ -19,18 +24,17 @@ class SearchSpider(Spider):
                     'mp': str(self.max_page),
                     'page': str(page)
                 }
-                yield FormRequest(url, callback=self.parse_index, formdata=data)
+                yield FormRequest(url, callback=self.parse_index, formdata=data, meta={'keyword': keyword})
 
     def parse_index(self, response):
         weibos = response.xpath('//div[@class="c" and contains(@id, "M_")]')
-        print(len(weibos), weibos)
         for weibo in weibos:
             is_forward = bool(weibo.xpath('.//span[@class="cmt"]').extract_first())
             if is_forward:
                 detail_url = weibo.xpath('.//a[contains(., "原文评论[")]//@href').extract_first()
             else:
                 detail_url = weibo.xpath('(.//a[contains(., "评论[")]/@href)').extract_first()
-            yield Request(detail_url, callback=self.parse_detail)
+            yield Request(detail_url, callback=self.parse_detail, meta={'keyword': response.meta.get('keyword')})
 
     def parse_detail(self, response):
         url = response.url
@@ -41,6 +45,7 @@ class SearchSpider(Spider):
         like_count = response.xpath('//a[contains(., "赞[")]//text()').re_first('赞\[(.*?)\]')
         posted_at = response.xpath('//div[@id="M_"]//span[@class="ct"]//text()').extract_first(default=None)
         user = response.xpath('//div[@id="M_"]/div[1]/a/text()').extract_first()
+        keyword = response.meta.get('keyword')
         weibo_item = WeiboItem()
         for field in weibo_item.fields:
             try:

@@ -19,4 +19,5 @@ class WeiboItem(Item):
     posted_at = Field()
     url = Field()
     user = Field()
+    keyword = Field()
     crawled_at = Field()
